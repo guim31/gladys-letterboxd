@@ -1,77 +1,115 @@
+// -----------------------------------------------------------------------------
+// The `films` widget, through the fake Gladys (as the core asks for it), and
+// checked by the SDK's validateWidgetContent.
+// -----------------------------------------------------------------------------
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateWidgetContent } from '@gladysassistant/integration-sdk';
-import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { buildDiscoveredDevices } from '../src/devices/index.js';
-import { simulateLanSession } from '../src/devices/plug.js';
-import { DEMO_STATUS_WIDGET, WIDGETS, refreshWidgets } from '../src/widgets.js';
-import { normalizeConfig } from '../src/config.js';
+import { deviceIds } from '../src/device.js';
+import { MAX_ITEMS } from '../src/widgets.js';
+import { A, B, createAll, createWorld, cycle } from './helpers/world.js';
 
-const gladys = createFakeGladys();
-const config = normalizeConfig();
-const demoStatus = WIDGETS[DEMO_STATUS_WIDGET];
+async function world(t, options) {
+  const w = await createWorld(options);
+  t.after(() => w.app.stop());
+  return w;
+}
 
-// What the SDK passes to onWidgetGet, plus the config index.js adds.
-const getContent = (cfg = config) =>
-  demoStatus.get(gladys, { settings: {}, language: 'en', units: 'metric', config: cfg });
+async function content(w, options) {
+  const ack = await w.fake.widgetGet('films', options);
+  assert.equal(ack.success, true, ack.error);
+  const found = validateWidgetContent(ack.data.content);
+  assert.deepEqual(found.problems ?? found, [], 'valid widget content');
+  return ack.data.content;
+}
 
-test('the demo_status content is rendered exactly as sent', async () => {
-  // [] = nothing the core would drop, truncate or trim to the content budget.
-  assert.deepEqual(validateWidgetContent(await getContent()), []);
-});
+const texts = (c) => c.components.filter((item) => item.type === 'text');
 
-test('the degraded plug connection content is valid too', async () => {
-  simulateLanSession(false);
-  try {
-    const content = await getContent();
-    assert.deepEqual(validateWidgetContent(content), []);
-    const status = content.components.find((component) => component.type === 'status');
-    assert.ok(
-      status.items.some((item) => item.color === 'warning'),
-      'degraded shows a warning',
-    );
-  } finally {
-    simulateLanSession(true);
-  }
-});
+for (const language of ['en', 'fr', 'de', 'es']) {
+  test(`every profile mixed, newest first, valid (${language})`, async (t) => {
+    const w = await world(t);
+    const c = await content(w, { language });
+    assert.ok(texts(c).length <= 2);
+    const list = c.components.find((item) => item.type === 'card-list');
+    assert.equal(list.items.length, MAX_ITEMS);
+    assert.equal(list.items[0].title, 'Mouse (2026)');
+    assert.equal(list.items[0].image, 'poster-1587386844');
+    assert.ok(list.items.every((item) => item.links[0].url.startsWith('https://letterboxd.com/')));
+  });
+}
 
-test('the live tiles reference features the integration publishes', async () => {
-  const featureIds = new Set(
-    buildDiscoveredDevices(gladys, config).flatMap((device) =>
-      device.features.map((feature) => feature.external_id),
-    ),
+test('one profile: its name in Gladys, the counts, no member in the rows', async (t) => {
+  const w = await world(t);
+  const [, device] = await createAll(w);
+  await w.fake.deviceUpdated({ ...device, name: 'Letterboxd Camille' });
+  const c = await content(w, {
+    language: 'fr',
+    settings: { device: deviceIds(w.gladys, B).device },
+  });
+  assert.deepEqual(
+    texts(c).map((item) => item.text),
+    ['Camille', '0 ce mois-ci · 22 cette année'],
   );
-  const liveTiles = (await getContent()).components.filter((c) => c.device_feature);
-  assert.ok(liveTiles.length > 0, 'the template demonstrates a device-bound tile');
-  for (const tile of liveTiles) {
-    assert.ok(featureIds.has(tile.device_feature), `unknown feature ${tile.device_feature}`);
-  }
+  const list = c.components.find((item) => item.type === 'card-list');
+  assert.equal(list.items[0].subtitle, '★★★★★ · sam. 31 oct.');
+  const tenet = list.items.find((item) => item.title === 'Tenet (2020)');
+  assert.ok(!tenet || tenet.badge.text === 'Revu');
 });
 
-test('every button action of the content is handled and answers a short toast', async () => {
-  const buttons = (await getContent()).components.filter((c) => c.type === 'button' && c.action);
-  assert.ok(buttons.length > 0, 'the template demonstrates a widget action');
-  for (const { action } of buttons) {
-    const message = await demoStatus.action(gladys, {
-      actionKey: action.key,
-      params: action.params ?? {},
-      settings: {},
-      config,
-    });
-    assert.ok(message.en, 'the toast carries at least the mandatory `en` text');
-    assert.ok(message.en.length <= 200, 'toasts are capped at 200 characters');
-  }
+test('a floor count reads "50+"', async (t) => {
+  const w = await world(t);
+  const c = await content(w, {
+    language: 'en',
+    settings: { device: deviceIds(w.gladys, A).device },
+  });
+  assert.equal(texts(c)[1].text, '6 this month · 50+ this year');
 });
 
-test('an unknown widget action fails, so the user sees the error', async () => {
-  await assert.rejects(
-    demoStatus.action(gladys, { actionKey: 'unknown', params: {}, settings: {}, config }),
-    /Unknown widget action/,
+test('posters can be turned off, and are served by the integration', async (t) => {
+  const w = await world(t);
+  const c = await content(w, { settings: { show_posters: false } });
+  const list = c.components.find((item) => item.type === 'card-list');
+  assert.ok(list.items.every((item) => item.image === undefined));
+  const ack = await w.fake.widgetGetImage('poster-1587386844');
+  assert.equal(ack.success, true, ack.error);
+  assert.ok(ack.data.image.startsWith('/9j/'));
+  const posters = w.site.requests.filter((r) => r.url.hostname === 'a.ltrbxd.com').length;
+  await w.fake.widgetGetImage('poster-1587386844');
+  assert.equal(w.site.requests.filter((r) => r.url.hostname === 'a.ltrbxd.com').length, posters);
+  assert.equal((await w.fake.widgetGetImage('poster-1')).success, false);
+  assert.equal((await w.fake.widgetGetImage('../etc')).success, false);
+});
+
+test('before the first reading: waiting', async (t) => {
+  const w = await world(t, { connect: false });
+  w.site.down = 'network';
+  await w.gladys.connect();
+  await w.app.ready;
+  await w.monitor.running;
+  const c = await content(w, { language: 'en' });
+  assert.deepEqual(
+    texts(c).map((item) => item.text),
+    ['Letterboxd', 'Waiting for Letterboxd…'],
   );
 });
 
-test('refreshWidgets nudges every widget', () => {
-  const fresh = createFakeGladys();
-  refreshWidgets(fresh);
-  assert.deepEqual(fresh.fake.widgetRefreshes, Object.keys(WIDGETS));
+test('a new film nudges the widget', async (t) => {
+  const w = await world(t);
+  const before = w.fake.widgetRefreshes.length;
+  await cycle(w);
+  assert.equal(w.fake.widgetRefreshes.length, before);
+  w.site.feeds.delete(A);
+  await cycle(w);
+  assert.equal(w.fake.widgetRefreshes.length, before + 1);
+});
+
+test('a widget set on a profile no longer followed shows none of the others', async (t) => {
+  const w = await world(t);
+  const c = await content(w, { language: 'en', settings: { device: 'ext:gone:profile:old' } });
+  assert.equal(
+    c.components.some((item) => item.type === 'card-list'),
+    false,
+  );
+  assert.equal(texts(c)[1].text, 'No film logged yet');
 });

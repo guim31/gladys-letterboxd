@@ -1,61 +1,116 @@
-# Demo Devices Template
+# Letterboxd
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Follow the films watched on [Letterboxd](https://letterboxd.com), the social network of film lovers, in Gladys
+Assistant: the last film each followed profile logged, its rating, the films of the month and of the year, a scene
+trigger at every new film and a dashboard widget with the latest posters.
+
+Not affiliated with Letterboxd. The integration reads the public RSS feed of each profile, without an account.
 
 ## What you get
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+- **One device per followed profile** ("Letterboxd Jane"), with five features:
+  - **Last film watched**: "Mouse (2026) · ★★★★", "rewatch" when it is one;
+  - **Rating of the last film**: 0.5 to 5 by half stars, **0 when the film was not rated**;
+  - **Films watched this month** and **Films watched this year**, counted on the diary (by the watch date the
+    member gave, in the time zone of Gladys, rewatches included);
+  - **Average rating this year**, of the rated films of the year, 0 when none.
+- **A scene trigger** "Letterboxd: new film watched", with the title, the year, the rating and a ready-made sentence.
+- **A dashboard widget** "Letterboxd films": the latest films with their poster and stars, for one profile or all.
+
+## Requirements
+
+- Gladys Assistant 5.1 or later.
+- Internet access from Gladys (the integration reads `letterboxd.com`).
+- One or more **public** Letterboxd profiles. You do not need a Letterboxd account, nor to give a password: the
+  integration only reads what anyone can see on the profile.
 
 ## Configuration
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+### Settings
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+| Setting                   | Description                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Letterboxd profiles**   | Usernames or profile links (`https://letterboxd.com/jane/`), separated by commas. Ten at most.        |
+| **Refresh interval**      | 30 minutes, 1 hour (default), 2 or 6 hours. One request per profile at each reading.                  |
+| **Language of the texts** | Names of the features (frozen at their creation) and sentences sent to the scenes. French by default. |
 
-## Actions
+Save, then open the **Discover** tab of the integration and create the devices you want. A profile Letterboxd does
+not know is said in the status of the integration and gets no device.
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+### The username
 
-## Scenes
+The username is the end of the profile address: `https://letterboxd.com/jane/` → `jane`. It is not the display
+name shown on the profile. Case does not matter.
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+## Devices
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+The device of a profile is refreshed by the integration itself at the chosen interval (it is not polled by Gladys).
+The values are kept between two readings; when Letterboxd cannot be reached, the last ones stay.
 
-## Dashboard
+**About the counts.** The RSS feed holds the **50 latest diary entries** of a profile. The films of the month and of
+the year are counted on them: for a member who logged more than 50 films this year, the year count stops at what
+the feed shows (the widget then says "50+"). A film watched without a diary entry (only marked as watched) is not in
+the feed and is not counted.
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+## Dashboard widget
+
+Add the **Letterboxd films** widget to a dashboard. Settings:
+
+- **Profile**: one profile, with its name and the films of the month and of the year at the top; empty, every
+  profile mixed, newest films first.
+- **Show the posters**: on by default. The posters are loaded from Letterboxd's image servers by the integration
+  (never by your browser); turn it off to load none.
+
+Each row shows the poster, the title and year, the stars, the member and the watch date. Tap a row to see the
+rating, the date, rewatch and like, and a link to the entry on Letterboxd.
+
+## Scene trigger
+
+**Letterboxd: new film watched** fires when a followed profile logged a film in its diary, at the next reading
+(within the refresh interval). Filters:
+
+- **Profile**: one device, or empty for every profile;
+- **Viewing**: first watch, rewatch, or both (empty).
+
+Variables for the next actions: `member` (the name of the device in Gladys, without "Letterboxd"), `title`, `year`,
+`rating` (0.5 to 5, 0 = not rated), `liked` (1 if the member liked the film), `url` (the entry on Letterboxd) and
+`summary`, a sentence such as "Jane watched Mouse (2026), rated 4/5."
+
+The first reading of a profile fires nothing: the films already in its feed are not news. The films seen are kept in
+the integration's data, so a restart fires nothing again. At most 10 films are announced per reading, the rest at
+the next one.
+
+## Scene examples
+
+- **Movie night recap**: trigger "new film watched" → send a message with `summary` to the family.
+- **A favourite**: trigger "new film watched" → condition on the device "Rating of the last film" equal to 5 → send a
+  message with the `title` variable.
+- **Living room**: trigger "new film watched" for your own profile → turn the lights back on after the film.
+
+## Data source, terms and quotas
+
+- Source: the public RSS feed `https://letterboxd.com/<username>/rss/` of each profile. Letterboxd's API is only
+  granted on request, and the integration does not use it.
+- The integration identifies itself with an honest User-Agent and sends one request per profile at each reading
+  (once an hour by default), plus the poster thumbnails the widget shows, kept in memory.
+- **The watchlist is not read**: it has no RSS feed, and its page is built for browsers.
+- Film titles, posters and data belong to Letterboxd and their owners; the integration only shows them on your
+  dashboard.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"Profile not found on Letterboxd"**: check the username in the profile address, not the display name.
+- **A profile without device**: the profile may be private or deactivated, or not exist.
+- **"Letterboxd cannot be reached"**: Gladys has no internet access, or Letterboxd is down; the integration tries
+  again at every reading and says when it answers again.
+- **A film is missing**: only diary entries are in the feed. Log the film in the diary (with a date) on Letterboxd.
+- **Feature names in the wrong language**: they are frozen at the creation of the device. Change the language, then
+  delete and create the device again.
+- Logs: the integration's page in Gladys shows its logs; `LOG_LEVEL=debug` details every reading.
+
+## Limits
+
+- Developed without a Letterboxd account of its own, on public feeds: feedback welcome.
+- Counts based on the 50 latest diary entries of the feed (see above).
+- No watchlist, no lists, no reviews text: the diary only.
+- A film is seen at the next reading, not instantly.
