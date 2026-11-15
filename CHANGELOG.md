@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-15
+
 ### Added
 
 - One device per followed Letterboxd profile (ten at most), read from its public
@@ -20,3 +22,6 @@ the notes of the version's GitHub Release.
 - Dashboard widget "Letterboxd films": the latest films of one profile or of
   all, with their poster (can be turned off), stars and watch date.
 - Texts and documentation in English, French, German and Spanish.
+
+[Unreleased]: https://github.com/guim31/gladys-letterboxd/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-letterboxd/releases/tag/v1.0.0
