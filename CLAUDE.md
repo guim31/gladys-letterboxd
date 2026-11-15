@@ -32,15 +32,18 @@ pushing.
 
 ```
 index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+src/app.js                        registers every SDK handler on a GladysIntegration (or the fake)
+src/monitor.js                    refresh cycle: feeds → devices, states, `new_film` trigger, posters
+src/letterboxd.js                 RSS client and parser (diary entries, posters), no dependency
+src/device.js                     one device per profile: external ids, buildDevice
+src/widgets.js                    dashboard widget `films` (card-list with posters)
+src/i18n.js                       texts of the container in en/fr/de/es, date formats
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+src/store.js                      /data/letterboxd.json: entries seen per profile (atomic writes)
+gladys-assistant-integration.json manifest: name, config_schema, trigger, widget, image...
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (en and fr mandatory)
+test/                             node --test, against the SDK's fake Gladys and a fake letterboxd.com
+test/fixtures/letterboxd/         two real feeds recorded on 15/11/2026, anonymized
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +73,9 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German ("du") and Spanish
+  ("usted"): manifest, messages, feature names, widget, and `docs/*.md` with the
+  same sections. `test/i18n.test.js` enforces it.
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -251,3 +255,25 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## Letterboxd (cette intégration)
+
+- Pas d'API publique (accordée sur demande) : flux RSS public `https://letterboxd.com/<utilisateur>/rss/`, sans
+  clé ni compte, User-Agent honnête, une requête par profil et par lecture (1 h par défaut). Un profil inexistant
+  répond 404 (page HTML) ; un profil sans activité, un flux valide sans `<item>`.
+- Le flux mêle les **50 dernières entrées du journal** (`guid` `letterboxd-review-…` ou `letterboxd-watch-…`) et les
+  dernières listes (`letterboxd-list-…`, ignorées). `memberRating` est **absent** d'une entrée sans note (pas vide),
+  `watchedDate` est une date sans fuseau, `pubDate` porte le fuseau du membre. Le titre du `channel` donne le nom
+  affiché (« Letterboxd - Karsten »), qui n'est pas le nom d'utilisateur.
+- Les comptes du mois et de l'année sont faits sur ces 50 entrées : plancher signalé (`partialYear`, « 50+ » dans le
+  widget) quand la plus ancienne date de l'année en cours.
+- **Watchlist** : `/watchlist/rss/` répond 403 et la page est faite pour les navigateurs : non lue, et dit dans la
+  doc.
+- Note : `unknown/unknown` (0 à 5, 0 = sans note) pour la note du dernier film et la note moyenne, **deux** pour
+  que le tableau de bord garde leurs noms (un type seul affiche son libellé générique « Inconnu »).
+- Affiches du widget : servies par `onWidgetGetImage` (le navigateur ne charge jamais une URL tierce), vignettes
+  230 × 345 du CDN `a.ltrbxd.com` (seul hôte accepté, ~25 Ko), 24 gardées en mémoire, désactivables par réglage.
+- Le déclencheur `new_film` ne part ni à la première lecture d'un profil ni après un redémarrage (ids vus dans
+  `/data`), une entrée n'est marquée vue qu'après un `publishSceneEvent` réussi, 10 par cycle au plus.
+- `onDeviceCreated` oublie les états publiés **de ce seul appareil** (`forgetPublishedStates(id)` par
+  fonctionnalité) : un `forgetPublishedStates()` global republierait tous les profils à chaque création.

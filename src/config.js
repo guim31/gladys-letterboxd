@@ -1,45 +1,74 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
-//
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// Integration configuration: defaults (they mirror the `default` values of the
+// manifest `config_schema`, see test/manifest.test.js) and normalization, so
+// the rest of the code never deals with strings, blanks or `undefined`.
 // -----------------------------------------------------------------------------
 
-// Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
+export const LANGUAGES = ['en', 'fr', 'de', 'es'];
+
+// Minutes between two readings of every profile. The RSS feeds are public
+// pages: a film logged is seldom urgent, and the integration stays a light
+// visitor (one request per profile per reading).
+export const REFRESH_INTERVALS = ['30', '60', '120', '360'];
+
+// Profiles followed at most: one request each per reading.
+export const MAX_PROFILES = 10;
+
 export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+  profiles: '',
+  refresh_interval: '60',
+  language: 'fr',
 };
 
+// Letterboxd usernames: letters, digits and underscores (2 to 15 on sign-up;
+// a little more is accepted here, the site is the judge).
+const USERNAME = /^[a-z0-9_]{1,30}$/i;
+// A profile link copied from the site gives its username.
+const PROFILE_LINK = /letterboxd\.com\/([^/?#\s]+)/i;
+// Pages of the site that are not profiles.
+const NOT_PROFILES = new Set(['film', 'films', 'list', 'lists', 'members', 'journal', 'search']);
+
 /**
- * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
+ * Split a typed list of profiles: usernames or profile links, separated by
+ * commas, semicolons, spaces or new lines. Usernames are case-insensitive on
+ * Letterboxd: they are kept in lower case, duplicates dropped.
+ * @returns {{ profiles: string[], invalid: string[], dropped: string[] }}
+ */
+export function parseProfiles(text) {
+  const profiles = [];
+  const invalid = [];
+  for (const token of String(text ?? '').split(/[\s,;]+/)) {
+    if (token === '') {
+      continue;
+    }
+    const name = (PROFILE_LINK.exec(token)?.[1] ?? token.replace(/^@/, '')).toLowerCase();
+    if (!USERNAME.test(name) || NOT_PROFILES.has(name)) {
+      invalid.push(token);
+    } else if (!profiles.includes(name)) {
+      profiles.push(name);
+    }
+  }
+  return {
+    profiles: profiles.slice(0, MAX_PROFILES),
+    invalid,
+    dropped: profiles.slice(MAX_PROFILES),
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} raw the configuration returned by the SDK
  */
 export function normalizeConfig(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const parsed = parseProfiles(source.profiles);
+  const refresh = String(source.refresh_interval ?? '');
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    profiles: parsed.profiles,
+    invalidProfiles: parsed.invalid,
+    droppedProfiles: parsed.dropped,
+    refreshMinutes: Number(
+      REFRESH_INTERVALS.includes(refresh) ? refresh : DEFAULT_CONFIG.refresh_interval,
+    ),
+    language: LANGUAGES.includes(source.language) ? source.language : DEFAULT_CONFIG.language,
   };
 }

@@ -30,6 +30,14 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+The integration needs no secret: it reads the public RSS feeds of the
+Letterboxd profiles typed in its configuration, and the poster thumbnails of
+Letterboxd's image servers (`a.ltrbxd.com` only, 300 KB at most). It writes one
+file under `/data`, `letterboxd.json`: per followed profile, its display name
+and the ids of the diary entries already seen (so a restart fires no scene
+again). It opens no port and talks to no other host than `letterboxd.com`,
+`a.ltrbxd.com` and Gladys.
+
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+and Letterboxd.
