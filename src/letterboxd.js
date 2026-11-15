@@ -133,19 +133,30 @@ export function parseFeed(xml) {
   };
 }
 
-async function get(fetchImpl, url, accept) {
+// Redirects are refused: the host checked is the host read.
+async function get(fetchImpl, url, accept, maxBytes) {
   const response = await fetchImpl(url, {
     headers: { 'User-Agent': USER_AGENT, Accept: accept },
-    redirect: 'follow',
+    redirect: 'error',
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
+  // Refused before the body is read when the server says it is too large.
+  const length = Number(response.headers?.get?.('content-length'));
+  if (length > maxBytes) {
+    throw new Error(`${new URL(url).hostname}: ${length} bytes, ${maxBytes} at most`);
+  }
   return response;
 }
 
 /** Read the feed of `username`. Throws ProfileNotFoundError on a 404. */
 export async function fetchProfile(fetchImpl, username) {
   const url = `${SITE_URL}/${encodeURIComponent(username)}/rss/`;
-  const response = await get(fetchImpl, url, 'application/rss+xml, application/xml');
+  const response = await get(
+    fetchImpl,
+    url,
+    'application/rss+xml, application/xml',
+    MAX_FEED_BYTES,
+  );
   if (response.status === 404) {
     throw new ProfileNotFoundError(username);
   }
@@ -169,7 +180,7 @@ export async function fetchPoster(fetchImpl, url) {
   if (parsed.protocol !== 'https:' || !POSTER_HOSTS.has(parsed.hostname)) {
     throw new Error('not a Letterboxd poster');
   }
-  const response = await get(fetchImpl, url, 'image/jpeg, image/webp, image/png');
+  const response = await get(fetchImpl, url, 'image/jpeg, image/webp, image/png', MAX_POSTER_BYTES);
   if (response.status !== 200) {
     throw new Error(`poster: HTTP ${response.status}`);
   }

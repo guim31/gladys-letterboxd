@@ -26,7 +26,21 @@ const USERNAME = /^[a-z0-9_]{1,30}$/i;
 // A profile link copied from the site gives its username.
 const PROFILE_LINK = /letterboxd\.com\/([^/?#\s]+)/i;
 // Pages of the site that are not profiles.
-const NOT_PROFILES = new Set(['film', 'films', 'list', 'lists', 'members', 'journal', 'search']);
+const NOT_PROFILES = new Set([
+  'film',
+  'films',
+  'list',
+  'lists',
+  'members',
+  'journal',
+  'search',
+  'about',
+  'apps',
+  'pro',
+  'api',
+  'settings',
+  'activity',
+]);
 
 /**
  * Split a typed list of profiles: usernames or profile links, separated by

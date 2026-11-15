@@ -114,7 +114,8 @@ export const WIDGETS = {
       const lang = LANGS.includes(language) ? language : 'en';
       const posters = settings.show_posters !== false;
       const chosen = settings.device ? monitor.usernameOf(settings.device) : null;
-      const usernames = chosen ? [chosen] : monitor.config.profiles;
+      // A device no longer followed shows nothing rather than every profile.
+      const usernames = chosen ? [chosen] : settings.device ? [] : monitor.config.profiles;
       const read = usernames.filter((username) => monitor.feeds.has(username));
       const rows = read
         .flatMap((username) =>
@@ -126,7 +127,9 @@ export const WIDGETS = {
           itemOf(entry, monitor.nameOf(username), lang, { posters, showMember: !chosen }),
         );
       let caption = t(TEXT.latest, lang);
-      if (read.length === 0) {
+      if (usernames.length === 0) {
+        caption = t(TEXT.none, lang);
+      } else if (read.length === 0) {
         caption = t(TEXT.waiting, lang);
       } else if (rows.length === 0) {
         caption = t(TEXT.none, lang);

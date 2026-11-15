@@ -102,3 +102,17 @@ test('profiles: usernames or links, lower case, no duplicates, ten at most', () 
     language: 'fr',
   });
 });
+
+test('no redirect followed, and a body announced too large is refused unread', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push(init.redirect);
+    return {
+      status: 200,
+      headers: new Headers({ 'content-length': String(400 * 1024) }),
+      arrayBuffer: async () => assert.fail('body read'),
+    };
+  };
+  await assert.rejects(fetchPoster(fetchImpl, 'https://a.ltrbxd.com/x.jpg'), /409600 bytes/);
+  assert.deepEqual(calls, ['error']);
+});

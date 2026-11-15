@@ -73,6 +73,7 @@ export class Monitor {
     // username → { username, displayName, entries } of the last good reading.
     this.feeds = new Map();
     this.notFound = new Set();
+    this.emptyOnce = new Set();
     this.lastSuccessAt = null;
     this.lastCycleAt = -Infinity;
     this.statusMessage = undefined;
@@ -271,6 +272,19 @@ export class Monitor {
         }
         continue;
       }
+      // A feed suddenly empty after a full one is more likely a glitch of the
+      // site than a member deleting their whole diary: kept once.
+      if (
+        feed.items === 0 &&
+        (this.feeds.get(username)?.entries.length ?? 0) > 0 &&
+        !this.emptyOnce.has(username)
+      ) {
+        this.emptyOnce.add(username);
+        logger.debug(`${username}: empty feed, the previous reading is kept`);
+        reached += 1;
+        continue;
+      }
+      this.emptyOnce.delete(username);
       if (this.notFound.delete(username)) {
         logger.info(`Profile found on Letterboxd: ${username}`);
       }

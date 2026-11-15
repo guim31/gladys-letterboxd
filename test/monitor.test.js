@@ -234,3 +234,17 @@ test('states are published with a 12-hour heartbeat (the SDK keeps the clock)', 
   assert.deepEqual(publish.mock.calls[0].arguments[1], { heartbeat: 12 * HOUR });
   assert.equal(publish.mock.calls[0].arguments[0].length, 10);
 });
+
+test('a feed suddenly empty is a glitch the first time, the truth the second', async (t) => {
+  const w = await world(t, { config: { profiles: A } });
+  await createAll(w);
+  const full = w.site.feeds.get(A);
+  w.site.feeds.set(A, full.replace(/<item>[\s\S]*<\/item>/, ''));
+  await cycle(w);
+  assert.equal(state(w, A, 'films_month'), 6);
+  await cycle(w);
+  assert.equal(state(w, A, 'films_month'), 0);
+  w.site.feeds.set(A, full);
+  await cycle(w);
+  assert.equal(w.fake.sceneEvents.length, 0);
+});

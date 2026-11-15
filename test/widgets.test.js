@@ -103,3 +103,13 @@ test('a new film nudges the widget', async (t) => {
   await cycle(w);
   assert.equal(w.fake.widgetRefreshes.length, before + 1);
 });
+
+test('a widget set on a profile no longer followed shows none of the others', async (t) => {
+  const w = await world(t);
+  const c = await content(w, { language: 'en', settings: { device: 'ext:gone:profile:old' } });
+  assert.equal(
+    c.components.some((item) => item.type === 'card-list'),
+    false,
+  );
+  assert.equal(texts(c)[1].text, 'No film logged yet');
+});
